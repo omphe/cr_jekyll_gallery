@@ -15,14 +15,28 @@
 # Make the gallery image an inherited static file
 # Get the paths sorted out
 # Put the markup into a tag/erb  - or put
-# 
+# Clean up the generated files afterward and gitignore the generated files
 
 
 require 'rmagick'
 include Magick
 
-class CRGalleryImage
+class CRGalleryImage < Jekyll::StaticFile
   attr_accessor :imageName, :thumbnail_name, :caption, :maxDimension, :maxThumbnailDimension, :sourcePath, :fileExtension, :thumbnailWidth, :thumbnailHeight, :width, :height
+  attr_accessor :thumbnail
+
+  def initialize(site,base,dir,name)
+
+        siteImage.maxDimension = @maxDimension
+        siteImage.maxThumbnailDimension = @maxThumbnailDimension
+
+      @maxDimension = site.config['cr_gallery']['max_dimension']
+      @maxThumbnailDimension = site.config['cr_gallery']['max_thumbnail_dimension']
+      @sourcePath = File.join(site.config['source'], site.config['cr_gallery']['source_dir'], @sourceImageDirectory)
+      @destinationPath = File.join(site.config['source'], site.config['cr_gallery']['destination_dir'], @sourceImageDirectory)
+
+    super
+  end
 
   def existsAtPath?(path)
     File.exists?(File.join(path, @imageName))
@@ -62,7 +76,7 @@ class CRGalleryImage
   def imageName=(name)
     @imageName = name
     @fileExtension = File.extname(name)
-    @thumbnail_name = File.basename(name, '.*') + '_thumbnail.' + @fileExtension
+    @thumbnail_name = File.basename(name, '.*') + '_thumbnail' + @fileExtension
  end
 
 
@@ -94,19 +108,19 @@ module Jekyll
       @sourceImageDirectory = @attributes['img_dir']
 
       @images = []
-      tagContents = tokens[0].split(/\n/).map {|x| x.strip }.reject {|x| x.empty? }
-   
+      tagContents = tokens[0].split(/\n/).map {|x| x.strip }.reject {|x| x.empty? }   
+
       tagContents.each do |tag|
-        image = CRGalleryImage.new()
+        taggedImage = {}
 
         if(tag.index(' ') == nil) 
-          image.imageName = tag
+          taggedImage[:imageName] = tag
         else
-          image.imageName = tag[0..tag.index(' ')].strip
-          image.caption = tag[tag.index(' ')..tag.length].strip
+          taggedImage[:imageName] = tag[0..tag.index(' ')].strip
+          taggedImage[:caption] = tag[tag.index(' ')..tag.length].strip
         end
 
-        @images << image
+        @images << taggedImage
       end
 
       super
@@ -115,44 +129,58 @@ module Jekyll
     def render(context)
 #      p context.registers[:site].categories
 
-      context.registers[:site].static_files << Jekyll::StaticFile.new(context.registers[:site],'source','_galleries/foobar','mytest.txt')
+#      context.registers[:site].static_files << Jekyll::StaticFile.new(context.registers[:site],'source','_galleries/foobar','mytest.txt')
       loadConfig(context.registers[:site].config)
 
       if(!galleryDirExists?)
         createGalleryDirectory
       end
 
+
       output = '<ul>'
-
       @images.each do |image|
-        image.maxDimension = @maxDimension
-        image.maxThumbnailDimension = @maxThumbnailDimension
-        
-        if(image.existsAtPath?(@sourcePath))#  &&  !image.existsAtPath?(@destinationPath))
-          image.sourcePath = @sourcePath
-          image.createFullSizeAtPath(@destinationPath)
-          image.createThumbnailAtPath(@destinationPath)
-        end
-        
-        output << '<li>' 
-        output << '<img src="' +  '../images/galleries/' + @sourceImageDirectory + '/' + image.imageName + '_thumbnail.' + image.fileExtension + '" '
+        siteImage = CRGalleryImage.new(context.registers[:site], 
+                                   context.registers[:site].source, 
+                                   File.join('images', 'galleries', @sourceImageDirectory),
+                                   image[:imageName])
 
-        if(image.thumbnailWidth)
-          output << 'width="' + image.thumbnailWidth.to_s + '"' 
+        siteImage.imageName = image[:imageName]
+
+        if(image[:caption])
+          siteImage.caption = image[:caption]
         end
-         if(image.thumbnailHeight)
-           output << 'height="' + image.thumbnailHeight.to_s + '"'
-         end
-        output << ' />'
+
+
+        if(siteImage.existsAtPath?(@sourcePath))#  &&  !image.existsAtPath?(@destinationPath))
+          siteImage.sourcePath = @sourcePath
+          siteImage.createFullSizeAtPath(@destinationPath)
+          siteImage.createThumbnailAtPath(@destinationPath)
+        end
+        
+ #       output << '<li>' 
+ #       output << '<img src="' +  '../images/galleries/' + @sourceImageDirectory + '/' + siteImage.imageName + '_thumbnail.' + siteImage.fileExtension + '" '
+
+
+#        if(image.thumbnailWidth)
+#          output << 'width="' + siteImage.thumbnailWidth.to_s + '"' 
+#        end
+#         if(image.thumbnailHeight)
+#           output << 'height="' + siteImage.thumbnailHeight.to_s + '"'
+#         end
+#        output << ' />'
 #  
-        if image.caption 
-          output << ' (' + image.caption + ') '
-        end
-        output << '</li>'
-     end
-
-      output << '</ul>'
-      output
+#        if image.caption 
+#          output << ' (' + siteImage.caption + ') '
+#        end
+#        output << '</li>'
+#     end
+      
+#      output << '</ul>'
+#      output
+      
+        context.registers[:site].static_files << siteImage
+        context.registers[:site].static_files << siteImage.thumbnail
+      end
     end
 
 
@@ -162,7 +190,7 @@ module Jekyll
 
     def createGalleryDirectory
       if(!Dir.exists?(File.join(config['source'] , config['cr_gallery']['destination_dir'])))
-          Dir.mkdir(File.join(config['source'], config['cr_gallery']['destination_dir']))
+        Dir.mkdir(File.join(config['source'], config['cr_gallery']['destination_dir']))
       end
       Dir.mkdir(@destinationPath)
     end
@@ -173,7 +201,6 @@ module Jekyll
       @maxThumbnailDimension = config['cr_gallery']['max_thumbnail_dimension']
       @sourcePath = File.join(config['source'], config['cr_gallery']['source_dir'], @sourceImageDirectory)
       @destinationPath = File.join(config['source'], config['cr_gallery']['destination_dir'], @sourceImageDirectory)
-#      @destinationPath =  + 'public/' + config['cr_gallery']['destination_dir'] + '/' + @sourceImageDirectory
     end
 
   end
