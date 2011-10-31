@@ -22,31 +22,20 @@ require 'rmagick'
 include Magick
 
 class CRGalleryImage < Jekyll::StaticFile
-  attr_accessor :imageName, :thumbnail_name, :caption, :maxDimension, :maxThumbnailDimension, :sourcePath, :fileExtension, :thumbnailWidth, :thumbnailHeight, :width, :height
-  attr_accessor :thumbnail
+  attr_accessor :caption, :max_dimension, :source_path, :width, :height, :thumbnail, :gallery_name
 
-  def initialize(site,base,dir,name)
+  def initialize(site,gallery_name,image_name)
+    super(site, site.config['source'], File.join('images','galleries', gallery_name), image_name)
+    @gallery_name = gallery_name
+    @max_dimension = site.config['cr_gallery']['max_dimension']
 
-        siteImage.maxDimension = @maxDimension
-        siteImage.maxThumbnailDimension = @maxThumbnailDimension
-
-      @maxDimension = site.config['cr_gallery']['max_dimension']
-      @maxThumbnailDimension = site.config['cr_gallery']['max_thumbnail_dimension']
-      @sourcePath = File.join(site.config['source'], site.config['cr_gallery']['source_dir'], @sourceImageDirectory)
-      @destinationPath = File.join(site.config['source'], site.config['cr_gallery']['destination_dir'], @sourceImageDirectory)
-
-    super
+    generate_image
   end
 
-  def existsAtPath?(path)
-    File.exists?(File.join(path, @imageName))
-  end
-
-
-  def createFullSizeAtPath(path)
-    image = sourceImage
-    resized = image.resize_to_fit(@maxDimension)
-    resized.write(File.join(path,  @imageName))
+  def generate_image
+    image = read_image
+    resized = image.resize_to_fit(@max_dimension)
+    resized.write(File.join(@base,@site.config['cr_gallery']['destination_dir'], @gallery_name, @name))
 
     @width = resized.rows
     @height = resized.columns
@@ -55,30 +44,28 @@ class CRGalleryImage < Jekyll::StaticFile
     resized.destroy!
   end
 
+  def read_image
+    return Image.read(File.join(@base,@site.config['cr_gallery']['source_dir'], @gallery_name, @name)).first
+  end
+end
 
-  def createThumbnailAtPath(path)
-    image = sourceImage
-    resized = image.resize_to_fit(@maxThumbnailDimension)
-    resized.write(File.join(path, @thumbnail_name))
+class CRGalleryThumbnail < CRGalleryImage
 
-    @thumbnailWidth = resized.rows
-    @thumbnailHeight = resized.columns
+  attr_accessor :fullsize_name
 
-    image.destroy!
-    resized.destroy!
+  def initialize(site,gallery_name,fullsize_name)
+    @fullsize_name = fullsize_name
+    name = File.basename(fullsize_name, '.*') + '_thumbnail' + File.extname(fullsize_name)
+    super(site, gallery_name, name)
+    @max_dimension = site.config['cr_gallery']['max_thumbnail_dimension']
+
+    generate_image
+    
   end
 
-
-  def sourceImage
-    return Image.read(File.join(@sourcePath, @imageName)).first
+  def read_image
+    return Image.read(File.join(@base,@site.config['cr_gallery']['source_dir'], @gallery_name, @fullsize_name)).first
   end
-
-  def imageName=(name)
-    @imageName = name
-    @fileExtension = File.extname(name)
-    @thumbnail_name = File.basename(name, '.*') + '_thumbnail' + @fileExtension
- end
-
 
 end
 
@@ -127,106 +114,45 @@ module Jekyll
     end
 
     def render(context)
-#      p context.registers[:site].categories
+      config = context.registers[:site].config
 
-#      context.registers[:site].static_files << Jekyll::StaticFile.new(context.registers[:site],'source','_galleries/foobar','mytest.txt')
-      loadConfig(context.registers[:site].config)
-
-      if(!galleryDirExists?)
-        createGalleryDirectory
-      end
-
+      FileUtils.mkdir_p(File.join(config['source'],config['cr_gallery']['destination_dir'], @sourceImageDirectory))
 
       output = '<ul>'
       @images.each do |image|
-        siteImage = CRGalleryImage.new(context.registers[:site], 
-                                   context.registers[:site].source, 
-                                   File.join('images', 'galleries', @sourceImageDirectory),
-                                   image[:imageName])
-
-        siteImage.imageName = image[:imageName]
-
+       
+        site_image = CRGalleryImage.new(context.registers[:site], @sourceImageDirectory, image[:imageName])
         if(image[:caption])
-          siteImage.caption = image[:caption]
+          site_image.caption = image[:caption]
         end
 
-
-        if(siteImage.existsAtPath?(@sourcePath))#  &&  !image.existsAtPath?(@destinationPath))
-          siteImage.sourcePath = @sourcePath
-          siteImage.createFullSizeAtPath(@destinationPath)
-          siteImage.createThumbnailAtPath(@destinationPath)
-        end
+        thumbnail_image = CRGalleryThumbnail.new(context.registers[:site], @sourceImageDirectory, image[:imageName])
         
- #       output << '<li>' 
- #       output << '<img src="' +  '../images/galleries/' + @sourceImageDirectory + '/' + siteImage.imageName + '_thumbnail.' + siteImage.fileExtension + '" '
+        output << '<li>' 
+        output << '<img src="' + site_image.destination('/') + '" '
 
+        if(thumbnail_image.width)
+          output << 'width="' + thumbnail_image.width.to_s + '"' 
+        end
+        if(thumbnail_image.height)
+          output << 'height="' + thumbnail_image.height.to_s + '"'
+        end
+        output << ' />'
+        
+        if site_image.caption 
+          output << ' (' + site_image.caption + ') '
+        end
+        output << '</li>'
+        
+        context.registers[:site].static_files << site_image
+        context.registers[:site].static_files << thumbnail_image
 
-#        if(image.thumbnailWidth)
-#          output << 'width="' + siteImage.thumbnailWidth.to_s + '"' 
-#        end
-#         if(image.thumbnailHeight)
-#           output << 'height="' + siteImage.thumbnailHeight.to_s + '"'
-#         end
-#        output << ' />'
-#  
-#        if image.caption 
-#          output << ' (' + siteImage.caption + ') '
-#        end
-#        output << '</li>'
-#     end
-      
-#      output << '</ul>'
-#      output
-      
-        context.registers[:site].static_files << siteImage
-        context.registers[:site].static_files << siteImage.thumbnail
       end
+      
+      output << '</ul>'
+      output
     end
-
-
-    def galleryDirExists?
-      return Dir.exists?(@destinationPath)
-    end
-
-    def createGalleryDirectory
-      if(!Dir.exists?(File.join(config['source'] , config['cr_gallery']['destination_dir'])))
-        Dir.mkdir(File.join(config['source'], config['cr_gallery']['destination_dir']))
-      end
-      Dir.mkdir(@destinationPath)
-    end
-
-    def loadConfig(config)
-      @config = config
-      @maxDimension = config['cr_gallery']['max_dimension']
-      @maxThumbnailDimension = config['cr_gallery']['max_thumbnail_dimension']
-      @sourcePath = File.join(config['source'], config['cr_gallery']['source_dir'], @sourceImageDirectory)
-      @destinationPath = File.join(config['source'], config['cr_gallery']['destination_dir'], @sourceImageDirectory)
-    end
-
   end
 end
 
 Liquid::Template.register_tag('cr_gallery', Jekyll::CRGalleryTag)
-
-
-#if __FILE__ == $0
-#  require 'test/unit'
-
-#  class TC_MyTest < Test::Unit::TestCase
-#    def setup
-#      @result = Delicious::tag('37signals', 'svn', 5)
-#    end
-
-#    def test_size
-#      assert_equal(@result.size, 5)
-#    end
-
-#    def test_bookmark
-#      bookmark = @result.first
-#      assert_equal(bookmark.title, 'Mike Rundle: "I now realize why larger weblogs are switching to WordPress...')
-#      assert_equal(bookmark.description, "...when a site posts a dozen or more entries per day for the past few years, rebuilding the individual entry archives takes a long time. A long, long time. &amp;lt;strong&amp;gt;About 32 minutes each rebuild.&amp;lt;/strong&amp;gt;&amp;quot;")
-#      assert_equal(bookmark.link, "http://businesslogs.com/business_logs/launch_a_socialites_life.php")
-#    end
-#  end
-#end
-
