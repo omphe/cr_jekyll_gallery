@@ -12,8 +12,6 @@
 
 
 # TODO
-# Make the gallery image an inherited static file
-# Get the paths sorted out
 # Put the markup into a tag/erb  - or put
 # Clean up the generated files afterward and gitignore the generated files
 
@@ -34,14 +32,18 @@ class CRGalleryImage < Jekyll::StaticFile
 
   def generate_image
     image = read_image
-    resized = image.resize_to_fit(@max_dimension)
+    resized = resize_image(image)
     resized.write(File.join(@base,@site.config['cr_gallery']['destination_dir'], @gallery_name, @name))
 
-    @width = resized.rows
-    @height = resized.columns
+    @width = resized.columns
+    @height = resized.rows
 
     image.destroy!
     resized.destroy!
+  end
+
+  def resize_image(image)
+    return image.resize_to_fit(@max_dimension)
   end
 
   def read_image
@@ -62,6 +64,11 @@ class CRGalleryThumbnail < CRGalleryImage
     generate_image
     
   end
+  
+  def resize_image(image)
+    return image.resize_to_fill(@max_dimension)
+  end
+
 
   def read_image
     return Image.read(File.join(@base,@site.config['cr_gallery']['source_dir'], @gallery_name, @fullsize_name)).first
@@ -118,7 +125,7 @@ module Jekyll
 
       FileUtils.mkdir_p(File.join(config['source'],config['cr_gallery']['destination_dir'], @sourceImageDirectory))
 
-      output = '<ul>'
+      output = '<div id="gallery"><ul>'
       @images.each do |image|
        
         site_image = CRGalleryImage.new(context.registers[:site], @sourceImageDirectory, image[:imageName])
@@ -129,7 +136,13 @@ module Jekyll
         thumbnail_image = CRGalleryThumbnail.new(context.registers[:site], @sourceImageDirectory, image[:imageName])
         
         output << '<li>' 
-        output << '<img src="' + site_image.destination('/') + '" '
+        output << '<a href="' + site_image.destination('/') + '" '
+        if site_image.caption 
+          output << 'title="' + site_image.caption + '" '
+        end        
+
+        output << '>'
+        output << '<img src="' + thumbnail_image.destination('/') + '" '
 
         if(thumbnail_image.width)
           output << 'width="' + thumbnail_image.width.to_s + '"' 
@@ -138,10 +151,7 @@ module Jekyll
           output << 'height="' + thumbnail_image.height.to_s + '"'
         end
         output << ' />'
-        
-        if site_image.caption 
-          output << ' (' + site_image.caption + ') '
-        end
+        output << '</a>'
         output << '</li>'
         
         context.registers[:site].static_files << site_image
@@ -150,6 +160,7 @@ module Jekyll
       end
       
       output << '</ul>'
+      output << '</div>'
       output
     end
   end
