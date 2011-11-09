@@ -20,12 +20,15 @@ require 'rmagick'
 include Magick
 
 class CRGalleryImage < Jekyll::StaticFile
-  attr_accessor :caption, :max_dimension, :source_path, :width, :height, :thumbnail, :gallery_name
+  attr_accessor :caption, :max_dimension, :max_width, :max_height, :source_path, :width, :height, :thumbnail, :gallery_name
 
   def initialize(site,gallery_name,image_name)
     super(site, site.config['source'], File.join('images','galleries', gallery_name), image_name)
     @gallery_name = gallery_name
+# We don't really need the max_dimension in the base CRGalleryImage class if we are going to use width & height
     @max_dimension = site.config['cr_gallery']['max_dimension']
+    @max_width = site.config['cr_gallery']['max_width']
+    @max_height = site.config['cr_gallery']['max_height']
 
     generate_image
   end
@@ -43,7 +46,7 @@ class CRGalleryImage < Jekyll::StaticFile
   end
 
   def resize_image(image)
-    return image.resize_to_fit(@max_dimension)
+    return image.resize_to_fit(@max_width, @max_height)
   end
 
   def read_image
