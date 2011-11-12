@@ -15,7 +15,7 @@
 # Put the markup into a tag/erb  - or put
 # Clean up the generated files afterward and gitignore the generated files
 
-
+require 'rubygems'
 require 'rmagick'
 include Magick
 
