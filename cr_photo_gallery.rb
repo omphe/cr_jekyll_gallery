@@ -16,7 +16,7 @@
 # Clean up the generated files afterward and gitignore the generated files
 
 require 'rubygems'
-require 'rmagick'
+require 'RMagick'
 include Magick
 
 class CRGalleryImage < Jekyll::StaticFile
